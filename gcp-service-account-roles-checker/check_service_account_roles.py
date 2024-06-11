@@ -30,6 +30,26 @@ def check_roles(iam_policy, roles_to_check, role_type):
     if not found:
         print(f"No service accounts with {role_type} roles found.")
 
+def check_service_account_user_role(iam_policy, project_id):
+    """サービスアカウントユーザーロールの確認"""
+    sa_user_role = 'roles/iam.serviceAccountUser'
+    found = False
+
+    for binding in iam_policy.get('bindings', []):
+        role = binding['role']
+        members = binding['members']
+        if role == sa_user_role:
+            found = True
+            if 'serviceAccount:' in binding.get('condition', {}).get('title', ''):
+                print(f'Conditional role assignment: {role} for members: {members}')
+            else:
+                print(f'Project-level assignment: {role} for members: {members}')
+    
+    if not found:
+        print("No service account user roles found.")
+    else:
+        print(f"Warning: {sa_user_role} should not be assigned at project level for least privilege.")
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python check_service_account_roles.py [PROJECT_ID]")
@@ -46,6 +66,7 @@ def main():
 
     check_roles(iam_policy, basic_roles, "basic")
     check_roles(iam_policy, [admin_role], "admin")
+    check_service_account_user_role(iam_policy, project_id)
 
 if __name__ == "__main__":
     main()
