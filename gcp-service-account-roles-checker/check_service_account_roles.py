@@ -49,6 +49,24 @@ def check_service_account_user_role(iam_policy):
     else:
         print(f"Check completed for {sa_user_role}.")
 
+def list_service_account_roles(iam_policy, service_account_name):
+    """特定のサービスアカウントに対するロールを一覧表示"""
+    roles = {}
+    for binding in iam_policy.get('bindings', []):
+        role = binding['role']
+        members = [member for member in binding['members'] if member.startswith(f'serviceAccount:{service_account_name}')]
+        if members:
+            roles[role] = members
+    
+    if not roles:
+        print(f"No roles found for service account {service_account_name}.")
+    else:
+        print(f"Roles for service account {service_account_name}:")
+        for role, members in roles.items():
+            print(f"  Role: {role}")
+            for member in members:
+                print(f"    Member: {member}")
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python check_service_account_roles.py [PROJECT_ID]")
@@ -62,10 +80,12 @@ def main():
 
     basic_roles = ['roles/owner', 'roles/editor', 'roles/viewer']
     admin_role = f'roles/{project_id}.admin'
+    service_account_name = ''
 
     check_roles(iam_policy, basic_roles, "basic")
     check_roles(iam_policy, [admin_role], "admin")
     check_service_account_user_role(iam_policy)
+    list_service_account_roles(iam_policy, service_account_name)
 
 if __name__ == "__main__":
     main()
