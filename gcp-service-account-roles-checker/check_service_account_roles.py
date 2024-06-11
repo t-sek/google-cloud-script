@@ -37,12 +37,15 @@ def main():
 
     project_id = sys.argv[1]
     iam_policy = get_iam_policy(project_id)
-    if iam_policy:
-        basic_roles = ['roles/owner', 'roles/editor', 'roles/viewer']
-        admin_role = f'roles/{project_id}.admin'
+    if not iam_policy:
+        print("Failed to retrieve IAM policy. Exiting.")
+        return
 
-        check_roles(iam_policy, basic_roles, "basic")
-        check_roles(iam_policy, [admin_role], "admin")
+    basic_roles = ['roles/owner', 'roles/editor', 'roles/viewer']
+    admin_role = f'roles/{project_id}.admin'
+
+    check_roles(iam_policy, basic_roles, "basic")
+    check_roles(iam_policy, [admin_role], "admin")
 
 if __name__ == "__main__":
     main()
