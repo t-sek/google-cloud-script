@@ -19,64 +19,74 @@ def get_iam_policy(project_id):
 def format_condition(condition):
     """条件の説明をフォーマット"""
     if condition:
-        return f" with condition: {condition['title']} ({condition['description']})"
+        return f"with condition: {condition['title']} ({condition['description']})"
     else:
-        return " with no condition"
+        return "with no condition"
 
-def print_roles_and_members(roles, role_type):
-    """ロールとメンバーの情報を出力"""
-    if not roles:
-        print(f"No service accounts with {role_type} roles found.")
-    else:
-        for role, members_condition in roles.items():
-            members, condition_desc = members_condition
-            for member in members:
-                print(f'Service Account {member} has {role_type} role: {role}{condition_desc}')
-
-def check_roles(iam_policy, roles_to_check, role_type):
-    """指定されたロールが付与されているサービスアカウントをチェック"""
-    roles = {}
+def categorize_roles(iam_policy, roles_to_check):
+    """ロールをテンポラリアクセスとそれ以外に分類"""
+    permanent_roles = {}
+    temporary_roles = {}
     for binding in iam_policy.get('bindings', []):
         role = binding['role']
         members = binding['members']
         if role in roles_to_check:
-            condition_desc = format_condition(binding.get('condition'))
+            condition = binding.get('condition')
             service_accounts = [member for member in members if member.startswith('serviceAccount:')]
             if service_accounts:
-                roles[role] = (service_accounts, condition_desc)
-    print_roles_and_members(roles, role_type)
+                if condition:
+                    temporary_roles[role] = service_accounts
+                else:
+                    permanent_roles[role] = service_accounts
+    return permanent_roles, temporary_roles
+
+def print_roles(roles, header):
+    """ロールの情報を出力"""
+    print(header)
+    if not roles:
+        print("None")
+    else:
+        for role, members in roles.items():
+            for member in members:
+                print(f"{member} has role: {role}")
+
+def check_roles(iam_policy, roles_to_check, role_type):
+    """指定されたロールが付与されているサービスアカウントをチェック"""
+    permanent_roles, temporary_roles = categorize_roles(iam_policy, roles_to_check)
+    print_roles(permanent_roles, f"===== {role_type.capitalize()} roles =====")
+    print_roles(temporary_roles, f"===== {role_type.capitalize()} temporary access roles =====")
 
 def check_service_account_user_role(iam_policy):
     """サービスアカウントユーザーロールの確認"""
     sa_user_role = 'roles/iam.serviceAccountUser'
-    roles = {}
-    for binding in iam_policy.get('bindings', []):
-        role = binding['role']
-        if role == sa_user_role:
-            condition_desc = format_condition(binding.get('condition'))
-            roles[role] = (binding['members'], condition_desc)
-            if not any('serviceAccount:' in member for member in binding['members']):
-                print(f"Warning: {sa_user_role} should not be assigned at project level for least privilege.")
-    print_roles_and_members(roles, "serviceAccountUser")
+    permanent_roles, temporary_roles = categorize_roles(iam_policy, [sa_user_role])
+    
+    if sa_user_role in permanent_roles and not any('serviceAccount:' in member for member in permanent_roles[sa_user_role]):
+        print(f"Warning: {sa_user_role} should not be assigned at project level for least privilege.")
+    
+    print_roles(permanent_roles, "===== Service Account User roles =====")
+    print_roles(temporary_roles, "===== Service Account User temporary access roles =====")
 
 def list_service_account_roles(iam_policy, service_account_name):
     """特定のサービスアカウントに対するロールを一覧表示"""
     roles = {}
+    temporary_roles = {}
     for binding in iam_policy.get('bindings', []):
         role = binding['role']
+        condition = binding.get('condition')
         members = [member for member in binding['members'] if member.startswith(f'serviceAccount:{service_account_name}')]
         if members:
-            condition_desc = format_condition(binding.get('condition'))
-            roles[role] = (members, condition_desc)
+            if condition:
+                temporary_roles[role] = members
+            else:
+                roles[role] = members
     
-    if not roles:
+    if not roles and not temporary_roles:
         print(f"No roles found for service account {service_account_name}.")
     else:
         print(f"Roles for service account {service_account_name}:")
-        for role, (members, condition_desc) in roles.items():
-            print(f"  Role: {role}{condition_desc}")
-            for member in members:
-                print(f"    Member: {member}")
+        print_roles(roles, "===== Permanent roles =====")
+        print_roles(temporary_roles, "===== Temporary access roles =====")
 
 def main():
     if len(sys.argv) != 2:
@@ -96,7 +106,8 @@ def main():
     check_roles(iam_policy, basic_roles, "basic")
     check_roles(iam_policy, [admin_role], "admin")
     check_service_account_user_role(iam_policy)
-    list_service_account_roles(iam_policy, service_account_name)
+    if service_account_name:
+        list_service_account_roles(iam_policy, service_account_name)
 
 if __name__ == "__main__":
     main()
